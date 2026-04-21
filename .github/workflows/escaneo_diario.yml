@@ -2,8 +2,8 @@ name: Escaneo diario de precios
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # Todos los días a las 12:00 UTC (9:00 Argentina)
-  workflow_dispatch:         # Permite correrlo manualmente desde GitHub
+    - cron: '0 12 * * *'
+  workflow_dispatch:
 
 jobs:
   escanear:
