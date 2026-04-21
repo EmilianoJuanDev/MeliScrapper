@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}MeLi Tracker — Buscador{% endblock %}
+
+{% block content %}
+
+<section class="hero">
+    <div class="hero-text">
+        <h1 class="hero-title">Seguí el precio<br>de lo que querés</h1>
+        <p class="hero-sub">Buscá cualquier producto en MercadoLibre y guardá la búsqueda para recibir un mail automático cuando algún resultado baje de precio.</p>
+    </div>
+
+    <form class="search-form" action="/buscar" method="POST">
+        <div class="search-box">
+            <input
+                type="text"
+                name="busqueda"
+                class="search-input"
+                placeholder="ej: auriculares sony, notebook lenovo..."
+                autofocus
+                required
+            >
+            <input
+                type="email"
+                name="email"
+                class="search-input email-input"
+                placeholder="Tu email para alertas (opcional)"
+            >
+            <button type="submit" class="search-btn">
+                Buscar →
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="how-it-works">
+    <div class="step">
+        <span class="step-num">01</span>
+        <p>Ingresá el producto y tu email, luego buscá</p>
+    </div>
+    <div class="step-divider">——</div>
+    <div class="step">
+        <span class="step-num">02</span>
+        <p>Revisá los resultados y guardá la búsqueda</p>
+    </div>
+    <div class="step-divider">——</div>
+    <div class="step">
+        <span class="step-num">03</span>
+        <p>Recibís un mail cuando algún precio baje</p>
+    </div>
+</section>
+
+{% endblock %}

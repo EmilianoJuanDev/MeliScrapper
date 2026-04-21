@@ -1,0 +1,187 @@
+from flask import Flask, render_template, request, redirect, url_for, flash
+from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+import sqlite3
+
+app = Flask(__name__)
+app.secret_key = 'clave_secreta_cambiar_luego'
+
+
+# ─────────────────────────────────────────
+# BASE DE DATOS
+# ─────────────────────────────────────────
+
+def init_db():
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+
+    # Búsquedas guardadas para monitorear
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS monitoreados (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            query           TEXT,
+            email           TEXT,
+            precio_minimo   REAL,
+            fecha_agregado  TEXT
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────
+# SCRAPING
+# ─────────────────────────────────────────
+
+def clean_price(price_str):
+    try:
+        return float(price_str.replace('.', '').replace(',', '.'))
+    except:
+        return None
+
+
+def get_search_results(query):
+    headers = {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'es-ES,es;q=0.9',
+    }
+    url = f"https://listado.mercadolibre.com.ar/{query}"
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    product_links = []
+    for link in soup.find_all('a', class_='poly-component__title', href=True):
+        product_links.append(link['href'])
+
+    return product_links
+
+
+def get_product_info(url):
+    headers = {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'es-ES,es;q=0.9',
+    }
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Título
+    try:
+        title = soup.find('h1', class_='ui-pdp-title').get_text(strip=True)
+    except:
+        title = None
+
+    # Precio
+    try:
+        price = soup.find('span', class_='andes-money-amount__fraction').get_text(strip=True)
+    except:
+        price = None
+
+    # Imagen — se obtiene la URL, el navegador la muestra directamente
+    try:
+        img_tag = soup.find('img', class_='ui-pdp-image')
+        image_url = img_tag.get('src') or img_tag.get('data-src')
+    except:
+        image_url = None
+
+    return title, price, image_url
+
+
+# ─────────────────────────────────────────
+# RUTAS
+# ─────────────────────────────────────────
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/buscar', methods=['POST'])
+def buscar():
+    query = request.form.get('busqueda', '').strip()
+    email = request.form.get('email', '').strip()
+
+    if not query:
+        flash('Por favor ingresá un producto para buscar.')
+        return redirect(url_for('index'))
+
+    product_urls = get_search_results(query)
+
+    if not product_urls:
+        flash('No se encontraron resultados para tu búsqueda.')
+        return redirect(url_for('index'))
+
+    productos = []
+    for url in product_urls[:9]:      # máximo 9 → grilla de 3x3
+        title, price, image_url = get_product_info(url)
+
+        if title and price:
+            productos.append({
+                'titulo':  title,
+                'precio':  clean_price(price),
+                'imagen':  image_url,
+                'url':     url,
+            })
+
+    if not productos:
+        flash('No se pudieron extraer datos de los productos encontrados.')
+        return redirect(url_for('index'))
+
+    return render_template(
+        'resultados.html',
+        productos=productos,
+        query=query,
+        email=email,
+    )
+
+
+@app.route('/guardar-busqueda', methods=['POST'])
+def guardar_busqueda():
+    query         = request.form.get('query')
+    email         = request.form.get('email')
+    precio_minimo = request.form.get('precio_minimo')
+
+    if not email:
+        flash('Ingresá un email para poder enviarte alertas.')
+        return redirect(url_for('index'))
+
+    conn = sqlite3.connect('database.db')
+    conn.execute(
+        '''INSERT INTO monitoreados (query, email, precio_minimo, fecha_agregado)
+           VALUES (?, ?, ?, ?)''',
+        (query, email, float(precio_minimo), datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f'✅ Búsqueda "{query}" guardada. Te avisaremos a {email} cuando el precio baje.')
+    return redirect(url_for('index'))
+
+
+@app.route('/monitoreados')
+def ver_monitoreados():
+    conn = sqlite3.connect('database.db')
+    monitoreados = conn.execute('SELECT * FROM monitoreados').fetchall()
+    conn.close()
+    return render_template('monitoreados.html', monitoreados=monitoreados)
+
+
+@app.route('/eliminar/<int:id>')
+def eliminar(id):
+    conn = sqlite3.connect('database.db')
+    conn.execute('DELETE FROM monitoreados WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    flash('Búsqueda eliminada del monitoreo.')
+    return redirect(url_for('ver_monitoreados'))
+
+
+# ─────────────────────────────────────────
+# INICIO
+# ─────────────────────────────────────────
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True)
+    # Recordá cambiar debug=False antes de subir a PythonAnywhere

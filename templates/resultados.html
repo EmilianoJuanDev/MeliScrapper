@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block title %}Resultados — {{ query }}{% endblock %}
+
+{% block content %}
+
+<div class="results-header">
+    <h1 class="results-title">Resultados para <span>"{{ query }}"</span></h1>
+    <p class="results-count">{{ productos|length }} productos encontrados</p>
+</div>
+
+<!-- Grid de productos -->
+<div class="products-grid">
+    {% for p in productos %}
+    <div class="product-card">
+
+        <!-- Imagen del producto -->
+        {% if p.imagen %}
+        <div class="product-img-wrap">
+            <img src="{{ p.imagen }}" alt="{{ p.titulo }}" class="product-img">
+        </div>
+        {% endif %}
+
+        <div class="product-info">
+            <p class="product-title">{{ p.titulo }}</p>
+            <p class="product-price">
+                ${{ "{:,.0f}".format(p.precio).replace(",", ".") }}
+            </p>
+            <a href="{{ p.url }}" target="_blank" class="product-link">
+                Ver en MercadoLibre ↗
+            </a>
+        </div>
+
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Botón único para guardar toda la búsqueda -->
+<div class="save-search-bar">
+    {% set precio_min = productos | map(attribute='precio') | min %}
+
+    <form action="/guardar-busqueda" method="POST" class="save-search-form">
+        <input type="hidden" name="query"         value="{{ query }}">
+        <input type="hidden" name="precio_minimo" value="{{ precio_min }}">
+
+        {% if email %}
+            <!-- El email ya vino desde el buscador, se usa directo -->
+            <input type="hidden" name="email" value="{{ email }}">
+            <p class="save-search-info">
+                Se guardará la búsqueda <strong>"{{ query }}"</strong> 
+                con precio mínimo actual de 
+                <strong>${{ "{:,.0f}".format(precio_min).replace(",", ".") }}</strong>.
+                Te avisaremos a <strong>{{ email }}</strong> cuando baje.
+            </p>
+            <button type="submit" class="btn-save">
+                Guardar búsqueda y monitorear →
+            </button>
+        {% else %}
+            <!-- No ingresó email antes, se pide acá -->
+            <p class="save-search-info">
+                Ingresá tu email para guardar la búsqueda 
+                <strong>"{{ query }}"</strong> y recibir alertas de precio.
+            </p>
+            <div class="save-search-row">
+                <input
+                    type="email"
+                    name="email"
+                    class="search-input"
+                    placeholder="Tu email"
+                    required
+                >
+                <button type="submit" class="btn-save">
+                    Guardar y monitorear →
+                </button>
+            </div>
+        {% endif %}
+    </form>
+</div>
+
+<div style="margin-top: 1.5rem;">
+    <a href="{{ url_for('index') }}" class="btn-primary">← Nueva búsqueda</a>
+</div>
+
+{% endblock %}

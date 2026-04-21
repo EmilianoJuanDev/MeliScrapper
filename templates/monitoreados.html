@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block title %}Búsquedas Monitoreadas{% endblock %}
+
+{% block content %}
+
+<h1 class="page-title">Búsquedas monitoreadas</h1>
+
+{% if monitoreados %}
+
+    <table class="monitored-table">
+        <thead>
+            <tr>
+                <th>Búsqueda</th>
+                <th>Email</th>
+                <th>Precio mínimo registrado</th>
+                <th>Guardado el</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in monitoreados %}
+            <tr>
+                <td><strong>{{ m[1] }}</strong></td>
+                <td style="color: var(--text-muted); font-size: 0.85rem;">{{ m[2] }}</td>
+                <td class="price-current">
+                    ${{ "{:,.0f}".format(m[3]).replace(",", ".") }}
+                </td>
+                <td style="color: var(--text-muted); font-size: 0.82rem;">{{ m[4] }}</td>
+                <td>
+                    <a href="{{ url_for('eliminar', id=m[0]) }}">
+                        <button class="btn-delete">Eliminar</button>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+{% else %}
+
+    <div class="empty-state">
+        <p>Todavía no estás monitoreando ninguna búsqueda.</p>
+        <a href="{{ url_for('index') }}" class="btn-primary">Buscar productos →</a>
+    </div>
+
+{% endif %}
+
+{% endblock %}
