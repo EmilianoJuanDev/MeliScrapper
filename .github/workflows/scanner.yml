@@ -20,10 +20,15 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install requests beautifulsoup4 psycopg2-binary
-
+      - name: Verificar variable
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: echo $DATABASE_URL | sed 's/:.*@/:***@/'
       - name: Correr scheduler
         env:
           DATABASE_URL:   ${{ secrets.DATABASE_URL }}
           GMAIL_USUARIO:  ${{ secrets.GMAIL_USUARIO }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+
+          
         run: python scheduler.py
