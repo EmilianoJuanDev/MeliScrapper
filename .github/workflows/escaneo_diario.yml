@@ -1,0 +1,28 @@
+name: Escaneo diario de precios
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # Todos los días a las 12:00 UTC (9:00 Argentina)
+  workflow_dispatch:         # También permite correrlo manualmente desde GitHub
+
+jobs:
+  escanear:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Conectar a PythonAnywhere y correr scheduler
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+        run: |
+          # Configurar la clave SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # Evitar el prompt de verificación de host
+          ssh-keyscan ssh.pythonanywhere.com >> ~/.ssh/known_hosts
+
+          # Conectarse y correr el scheduler
+          ssh $PA_USERNAME@ssh.pythonanywhere.com \
+            "cd /home/$PA_USERNAME/MeLi_webscrapy && python scheduler.py"
