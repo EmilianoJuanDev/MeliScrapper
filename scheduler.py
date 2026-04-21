@@ -11,8 +11,8 @@ import os
 # CONFIGURACIÓN — vienen de variables de entorno
 # ─────────────────────────────────────────
 
-GMAIL_USUARIO  = os.environ['emixjuxxx@gmail.com']
-GMAIL_PASSWORD = os.environ['rqkb otaf scbr xuqd']
+GMAIL_USUARIO  = os.environ['GMAIL_USUARIO']
+GMAIL_PASSWORD = os.environ['GMAIL_PASSWORD']
 DATABASE_URL   = os.environ['DATABASE_URL']
 
 
