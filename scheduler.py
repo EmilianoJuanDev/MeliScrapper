@@ -1,21 +1,31 @@
-import sqlite3
+import psycopg2
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
+import os
 
 # ─────────────────────────────────────────
-# CONFIGURACIÓN — completá estos datos
+# CONFIGURACIÓN — vienen de variables de entorno
 # ─────────────────────────────────────────
 
-GMAIL_USUARIO  = "emijuxxx@gmail.com"       # tu cuenta de Gmail
-GMAIL_PASSWORD = "rqkb otaf scbr xuqd"      # contraseña de aplicación (16 caracteres)
+GMAIL_USUARIO  = os.environ['emixjuxxx@gmail.com']
+GMAIL_PASSWORD = os.environ['rqkb otaf scbr xuqd']
+DATABASE_URL   = os.environ['DATABASE_URL']
 
 
 # ─────────────────────────────────────────
-# SCRAPING (igual que en app.py)
+# CONEXIÓN
+# ─────────────────────────────────────────
+
+def get_conn():
+    return psycopg2.connect(DATABASE_URL)
+
+
+# ─────────────────────────────────────────
+# SCRAPING
 # ─────────────────────────────────────────
 
 def clean_price(price_str):
@@ -67,32 +77,26 @@ def get_product_info(url):
 # ─────────────────────────────────────────
 
 def enviar_mail(destinatario, query, productos_bajaron):
-    """
-    Manda un mail con la lista de productos que bajaron de precio.
-    productos_bajaron: lista de dicts con titulo, precio_anterior, precio_nuevo, url
-    """
-
     asunto = f"📉 Bajaron precios para: {query}"
 
-    # Armar el cuerpo del mail en HTML
     filas = ""
     for p in productos_bajaron:
-        diferencia  = p['precio_anterior'] - p['precio_nuevo']
-        porcentaje  = (diferencia / p['precio_anterior']) * 100
+        diferencia = p['precio_anterior'] - p['precio_nuevo']
+        porcentaje = (diferencia / p['precio_anterior']) * 100
         filas += f"""
         <tr>
-            <td style="padding: 12px; border-bottom: 1px solid #2a2a2a;">
-                <a href="{p['url']}" style="color: #f0c040; text-decoration: none;">
+            <td style="padding:12px;border-bottom:1px solid #2a2a2a;">
+                <a href="{p['url']}" style="color:#f0c040;text-decoration:none;">
                     {p['titulo'][:70]}
                 </a>
             </td>
-            <td style="padding: 12px; border-bottom: 1px solid #2a2a2a; color: #888; text-decoration: line-through;">
+            <td style="padding:12px;border-bottom:1px solid #2a2a2a;color:#888;text-decoration:line-through;">
                 ${p['precio_anterior']:,.0f}
             </td>
-            <td style="padding: 12px; border-bottom: 1px solid #2a2a2a; color: #4caf7d; font-weight: bold;">
+            <td style="padding:12px;border-bottom:1px solid #2a2a2a;color:#4caf7d;font-weight:bold;">
                 ${p['precio_nuevo']:,.0f}
             </td>
-            <td style="padding: 12px; border-bottom: 1px solid #2a2a2a; color: #4caf7d;">
+            <td style="padding:12px;border-bottom:1px solid #2a2a2a;color:#4caf7d;">
                 -{porcentaje:.1f}%
             </td>
         </tr>
@@ -100,32 +104,26 @@ def enviar_mail(destinatario, query, productos_bajaron):
 
     cuerpo_html = f"""
     <html>
-    <body style="background: #0e0e0e; color: #f0ede6; font-family: sans-serif; padding: 32px;">
-
-        <h2 style="color: #f0c040; margin-bottom: 8px;">📉 Bajaron precios</h2>
-        <p style="color: #888; margin-bottom: 24px;">
-            Búsqueda: <strong style="color: #f0ede6;">{query}</strong><br>
+    <body style="background:#0e0e0e;color:#f0ede6;font-family:sans-serif;padding:32px;">
+        <h2 style="color:#f0c040;margin-bottom:8px;">📉 Bajaron precios</h2>
+        <p style="color:#888;margin-bottom:24px;">
+            Búsqueda: <strong style="color:#f0ede6;">{query}</strong><br>
             Escaneo: {datetime.now().strftime("%d/%m/%Y %H:%M")}
         </p>
-
-        <table style="width: 100%; border-collapse: collapse; background: #161616; border-radius: 8px; overflow: hidden;">
+        <table style="width:100%;border-collapse:collapse;background:#161616;border-radius:8px;overflow:hidden;">
             <thead>
-                <tr style="background: #1d1d1d;">
-                    <th style="padding: 12px; text-align: left; color: #888; font-size: 12px; text-transform: uppercase;">Producto</th>
-                    <th style="padding: 12px; text-align: left; color: #888; font-size: 12px; text-transform: uppercase;">Antes</th>
-                    <th style="padding: 12px; text-align: left; color: #888; font-size: 12px; text-transform: uppercase;">Ahora</th>
-                    <th style="padding: 12px; text-align: left; color: #888; font-size: 12px; text-transform: uppercase;">Baja</th>
+                <tr style="background:#1d1d1d;">
+                    <th style="padding:12px;text-align:left;color:#888;font-size:12px;text-transform:uppercase;">Producto</th>
+                    <th style="padding:12px;text-align:left;color:#888;font-size:12px;text-transform:uppercase;">Antes</th>
+                    <th style="padding:12px;text-align:left;color:#888;font-size:12px;text-transform:uppercase;">Ahora</th>
+                    <th style="padding:12px;text-align:left;color:#888;font-size:12px;text-transform:uppercase;">Baja</th>
                 </tr>
             </thead>
-            <tbody>
-                {filas}
-            </tbody>
+            <tbody>{filas}</tbody>
         </table>
-
-        <p style="color: #888; font-size: 12px; margin-top: 24px;">
+        <p style="color:#888;font-size:12px;margin-top:24px;">
             Este mail fue enviado automáticamente por MeLi Tracker.
         </p>
-
     </body>
     </html>
     """
@@ -154,8 +152,10 @@ def escanear():
     print(f"Escaneo iniciado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     print(f"{'='*50}")
 
-    conn = sqlite3.connect('database.db')
-    monitoreados = conn.execute('SELECT * FROM monitoreados').fetchall()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM monitoreados')
+    monitoreados = c.fetchall()
     conn.close()
 
     if not monitoreados:
@@ -163,21 +163,20 @@ def escanear():
         return
 
     for registro in monitoreados:
-        id_registro    = registro[0]
-        query          = registro[1]
-        email          = registro[2]
-        precio_minimo  = registro[3]   # el precio mínimo del último escaneo
+        id_registro   = registro[0]
+        query         = registro[1]
+        email         = registro[2]
+        precio_minimo = registro[3]
 
         print(f"\n🔍 Buscando: '{query}' (mínimo guardado: ${precio_minimo:,.0f})")
 
-        # Buscar los productos actuales
         urls = get_search_results(query)
         if not urls:
             print("  Sin resultados.")
             continue
 
         productos_bajaron = []
-        nuevo_minimo      = precio_minimo   # vamos a actualizar si hay cambios
+        nuevo_minimo      = precio_minimo
 
         for url in urls[:9]:
             title, price = get_product_info(url)
@@ -188,27 +187,23 @@ def escanear():
             if not precio_actual:
                 continue
 
-            # ¿Este producto bajó respecto al mínimo guardado?
             if precio_actual < precio_minimo:
-                print(f"  📉 Bajó: {title[:50]} → ${precio_actual:,.0f} (antes ${precio_minimo:,.0f})")
+                print(f"  📉 Bajó: {title[:50]} → ${precio_actual:,.0f}")
                 productos_bajaron.append({
                     'titulo':          title,
                     'precio_anterior': precio_minimo,
                     'precio_nuevo':    precio_actual,
                     'url':             url,
                 })
-                # Actualizamos el nuevo mínimo si encontramos uno menor
                 if precio_actual < nuevo_minimo:
                     nuevo_minimo = precio_actual
 
-        # Si hubo bajadas → mandar mail
         if productos_bajaron:
             enviar_mail(email, query, productos_bajaron)
-
-            # Actualizar el precio mínimo en la base de datos
-            conn = sqlite3.connect('database.db')
-            conn.execute(
-                'UPDATE monitoreados SET precio_minimo = ? WHERE id = ?',
+            conn = get_conn()
+            c = conn.cursor()
+            c.execute(
+                'UPDATE monitoreados SET precio_minimo = %s WHERE id = %s',
                 (nuevo_minimo, id_registro)
             )
             conn.commit()
@@ -219,10 +214,6 @@ def escanear():
 
     print(f"\nEscaneo finalizado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
-
-# ─────────────────────────────────────────
-# EJECUCIÓN
-# ─────────────────────────────────────────
 
 if __name__ == '__main__':
     escanear()

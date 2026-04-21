@@ -2,31 +2,34 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
-import sqlite3
+import psycopg2
+import os
 
 app = Flask(__name__)
-app.secret_key = 'clave_secreta_cambiar_luego'
-
+app.secret_key = 'meli_tracker_2026_emi'
 
 # ─────────────────────────────────────────
-# BASE DE DATOS
+# CONEXIÓN A BASE DE DATOS
 # ─────────────────────────────────────────
+
+def get_conn():
+    """Retorna una conexión a Supabase usando la variable de entorno DATABASE_URL."""
+    return psycopg2.connect(os.environ['DATABASE_URL'])
+
 
 def init_db():
-    conn = sqlite3.connect('database.db')
+    """Crea las tablas si no existen. Se llama una vez al iniciar la app."""
+    conn = get_conn()
     c = conn.cursor()
-
-    # Búsquedas guardadas para monitorear
     c.execute('''
         CREATE TABLE IF NOT EXISTS monitoreados (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            id              SERIAL PRIMARY KEY,
             query           TEXT,
             email           TEXT,
             precio_minimo   REAL,
             fecha_agregado  TEXT
         )
     ''')
-
     conn.commit()
     conn.close()
 
@@ -66,19 +69,16 @@ def get_product_info(url):
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Título
     try:
         title = soup.find('h1', class_='ui-pdp-title').get_text(strip=True)
     except:
         title = None
 
-    # Precio
     try:
         price = soup.find('span', class_='andes-money-amount__fraction').get_text(strip=True)
     except:
         price = None
 
-    # Imagen — se obtiene la URL, el navegador la muestra directamente
     try:
         img_tag = soup.find('img', class_='ui-pdp-image')
         image_url = img_tag.get('src') or img_tag.get('data-src')
@@ -113,27 +113,21 @@ def buscar():
         return redirect(url_for('index'))
 
     productos = []
-    for url in product_urls[:9]:      # máximo 9 → grilla de 3x3
+    for url in product_urls[:9]:
         title, price, image_url = get_product_info(url)
-
         if title and price:
             productos.append({
-                'titulo':  title,
-                'precio':  clean_price(price),
-                'imagen':  image_url,
-                'url':     url,
+                'titulo': title,
+                'precio': clean_price(price),
+                'imagen': image_url,
+                'url':    url,
             })
 
     if not productos:
         flash('No se pudieron extraer datos de los productos encontrados.')
         return redirect(url_for('index'))
 
-    return render_template(
-        'resultados.html',
-        productos=productos,
-        query=query,
-        email=email,
-    )
+    return render_template('resultados.html', productos=productos, query=query, email=email)
 
 
 @app.route('/guardar-busqueda', methods=['POST'])
@@ -146,10 +140,11 @@ def guardar_busqueda():
         flash('Ingresá un email para poder enviarte alertas.')
         return redirect(url_for('index'))
 
-    conn = sqlite3.connect('database.db')
-    conn.execute(
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(
         '''INSERT INTO monitoreados (query, email, precio_minimo, fecha_agregado)
-           VALUES (?, ?, ?, ?)''',
+           VALUES (%s, %s, %s, %s)''',
         (query, email, float(precio_minimo), datetime.now().strftime("%Y-%m-%d %H:%M"))
     )
     conn.commit()
@@ -161,16 +156,19 @@ def guardar_busqueda():
 
 @app.route('/monitoreados')
 def ver_monitoreados():
-    conn = sqlite3.connect('database.db')
-    monitoreados = conn.execute('SELECT * FROM monitoreados').fetchall()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT * FROM monitoreados')
+    monitoreados = c.fetchall()
     conn.close()
     return render_template('monitoreados.html', monitoreados=monitoreados)
 
 
 @app.route('/eliminar/<int:id>')
 def eliminar(id):
-    conn = sqlite3.connect('database.db')
-    conn.execute('DELETE FROM monitoreados WHERE id = ?', (id,))
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('DELETE FROM monitoreados WHERE id = %s', (id,))
     conn.commit()
     conn.close()
     flash('Búsqueda eliminada del monitoreo.')
@@ -184,4 +182,3 @@ def eliminar(id):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
-    # Recordá cambiar debug=False antes de subir a PythonAnywhere
