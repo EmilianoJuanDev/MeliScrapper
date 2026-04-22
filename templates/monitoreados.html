@@ -6,13 +6,36 @@
 
 <h1 class="page-title">Búsquedas monitoreadas</h1>
 
-{% if monitoreados %}
+{% if not email_filtro %}
+
+    <!-- Formulario para ingresar email -->
+    <div class="save-search-bar" style="max-width: 520px;">
+        <form action="/monitoreados" method="POST" class="save-search-form">
+            <p class="save-search-info">Ingresá tu email para ver tus búsquedas guardadas.</p>
+            <div class="save-search-row">
+                <input
+                    type="email"
+                    name="email"
+                    class="search-input"
+                    placeholder="Tu email"
+                    required
+                    autofocus
+                >
+                <button type="submit" class="btn-save">Ver →</button>
+            </div>
+        </form>
+    </div>
+
+{% elif monitoreados %}
+
+    <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9rem;">
+        Mostrando búsquedas de <strong style="color: var(--text);">{{ email_filtro }}</strong>
+    </p>
 
     <table class="monitored-table">
         <thead>
             <tr>
                 <th>Búsqueda</th>
-                <th>Email</th>
                 <th>Precio mínimo registrado</th>
                 <th>Guardado el</th>
                 <th></th>
@@ -22,7 +45,6 @@
             {% for m in monitoreados %}
             <tr>
                 <td><strong>{{ m[1] }}</strong></td>
-                <td style="color: var(--text-muted); font-size: 0.85rem;">{{ m[2] }}</td>
                 <td class="price-current">
                     ${{ "{:,.0f}".format(m[3]).replace(",", ".") }}
                 </td>
@@ -37,11 +59,19 @@
         </tbody>
     </table>
 
+    <div style="margin-top: 2rem;">
+        <a href="/monitoreados" class="btn-primary">← Cambiar email</a>
+    </div>
+
 {% else %}
 
     <div class="empty-state">
-        <p>Todavía no estás monitoreando ninguna búsqueda.</p>
+        <p>No hay búsquedas guardadas para <strong>{{ email_filtro }}</strong>.</p>
         <a href="{{ url_for('index') }}" class="btn-primary">Buscar productos →</a>
+    </div>
+
+    <div style="margin-top: 1rem; text-align: center;">
+        <a href="/monitoreados" style="color: var(--text-muted); font-size: 0.85rem;">← Cambiar email</a>
     </div>
 
 {% endif %}

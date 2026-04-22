@@ -144,7 +144,7 @@ def guardar_busqueda():
     c = conn.cursor()
     c.execute(
         '''INSERT INTO monitoreados (query, email, precio_minimo, fecha_agregado)
-           VALUES (%s, %s, %s, %s)''',
+        VALUES (%s, %s, %s, %s)''',
         (query, email, float(precio_minimo), datetime.now().strftime("%Y-%m-%d %H:%M"))
     )
     conn.commit()
@@ -154,14 +154,21 @@ def guardar_busqueda():
     return redirect(url_for('index'))
 
 
-@app.route('/monitoreados')
+@app.route('/monitoreados', methods=['GET', 'POST'])
 def ver_monitoreados():
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute('SELECT * FROM monitoreados')
-    monitoreados = c.fetchall()
-    conn.close()
-    return render_template('monitoreados.html', monitoreados=monitoreados)
+    email_filtro = None
+    monitoreados = []
+
+    if request.method == 'POST':
+        email_filtro = request.form.get('email', '').strip()
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute('SELECT * FROM monitoreados WHERE email = %s', (email_filtro,))
+        monitoreados = c.fetchall()
+        conn.close()
+
+    return render_template('monitoreados.html', monitoreados=monitoreados, email_filtro=email_filtro)
+
 
 
 @app.route('/eliminar/<int:id>')
