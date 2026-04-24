@@ -55,11 +55,28 @@ def get_search_results(query):
     response = requests.get('https://api.scraperapi.com/', params=payload, timeout=120)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    product_links = []
-    for link in soup.find_all('a', class_='poly-component__title', href=True):
-        product_links.append(link['href'])
+    productos = []
+    items = soup.find_all('li', class_='ui-search-layout__item')
+    for item in items[:9]:
+        try:
+            title = item.find('h2', class_='poly-box').get_text(strip=True)
+        except:
+            title = None
 
-    return product_links
+        try:
+            price = item.find('span', class_='andes-money-amount__fraction').get_text(strip=True)
+        except:
+            price = None
+
+        try:
+            url = item.find('a', class_='poly-component__title')['href']
+        except:
+            url = None
+
+        if title and price and url:
+            productos.append({'titulo': title, 'precio': clean_price(price), 'imagen': None, 'url': url})
+
+    return productos
 
 
 def get_product_info(url):
@@ -109,25 +126,10 @@ def buscar():
         flash('Por favor ingresá un producto para buscar.')
         return redirect(url_for('index'))
 
-    product_urls = get_search_results(query)
-
-    if not product_urls:
-        flash('No se encontraron resultados para tu búsqueda.')
-        return redirect(url_for('index'))
-
-    productos = []
-    for url in product_urls[:9]:
-        title, price, image_url = get_product_info(url)
-        if title and price:
-            productos.append({
-                'titulo': title,
-                'precio': clean_price(price),
-                'imagen': image_url,
-                'url':    url,
-            })
+    productos = get_search_results(query)
 
     if not productos:
-        flash('No se pudieron extraer datos de los productos encontrados.')
+        flash('No se encontraron resultados para tu búsqueda.')
         return redirect(url_for('index'))
 
     return render_template('resultados.html', productos=productos, query=query, email=email)
