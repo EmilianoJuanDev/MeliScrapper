@@ -47,8 +47,12 @@ def clean_price(price_str):
 
 def get_search_results(query):
     api_key = os.environ['SCRAPER_API_KEY']
-    url = f"http://api.scraperapi.com?api_key={api_key}&url=https://listado.mercadolibre.com.ar/{query}&country_code=ar"
-    response = requests.get(url, timeout=60)
+    payload = {
+        'api_key': api_key,
+        'url': f'https://listado.mercadolibre.com.ar/{query}',
+        'country_code': 'ar'
+    }
+    response = requests.get('https://api.scraperapi.com/', params=payload, timeout=120)
     soup = BeautifulSoup(response.text, 'html.parser')
 
     product_links = []
@@ -60,8 +64,12 @@ def get_search_results(query):
 
 def get_product_info(url):
     api_key = os.environ['SCRAPER_API_KEY']
-    proxied_url = f"http://api.scraperapi.com?api_key={api_key}&url={url}&country_code=ar"
-    response = requests.get(proxied_url, timeout=60)
+    payload = {
+        'api_key': api_key,
+        'url': url,
+        'country_code': 'ar'
+    }
+    response = requests.get('https://api.scraperapi.com/', params=payload, timeout=120)
     soup = BeautifulSoup(response.text, 'html.parser')
 
     try:
