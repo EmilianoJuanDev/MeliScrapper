@@ -1,24 +1,21 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from datetime import datetime
-import requests
-from bs4 import BeautifulSoup
 import psycopg2
 import os
 
 app = Flask(__name__)
 app.secret_key = 'meli_tracker_2026_emi'
 
+
 # ─────────────────────────────────────────
 # CONEXIÓN A BASE DE DATOS
 # ─────────────────────────────────────────
 
 def get_conn():
-    """Retorna una conexión a Supabase usando la variable de entorno DATABASE_URL."""
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
 
 def init_db():
-    """Crea las tablas si no existen. Se llama una vez al iniciar la app."""
     conn = get_conn()
     c = conn.cursor()
     c.execute('''
@@ -30,82 +27,18 @@ def init_db():
             fecha_agregado  TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS resultados (
+            id              SERIAL PRIMARY KEY,
+            query           TEXT,
+            titulo          TEXT,
+            precio          REAL,
+            url             TEXT,
+            fecha_escaneo   TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
-
-
-# ─────────────────────────────────────────
-# SCRAPING
-# ─────────────────────────────────────────
-
-def clean_price(price_str):
-    try:
-        return float(price_str.replace('.', '').replace(',', '.'))
-    except:
-        return None
-
-
-def get_search_results(query):
-    api_key = os.environ['SCRAPER_API_KEY']
-    payload = {
-        'api_key': api_key,
-        'url': f'https://listado.mercadolibre.com.ar/{query}',
-        'country_code': 'ar'
-    }
-    response = requests.get('https://api.scraperapi.com/', params=payload, timeout=120)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    productos = []
-    items = soup.find_all('li', class_='ui-search-layout__item')
-    for item in items[:9]:
-        try:
-            title = item.find('h2', class_='poly-box').get_text(strip=True)
-        except:
-            title = None
-
-        try:
-            price = item.find('span', class_='andes-money-amount__fraction').get_text(strip=True)
-        except:
-            price = None
-
-        try:
-            url = item.find('a', class_='poly-component__title')['href']
-        except:
-            url = None
-
-        if title and price and url:
-            productos.append({'titulo': title, 'precio': clean_price(price), 'imagen': None, 'url': url})
-
-    return productos
-
-
-def get_product_info(url):
-    api_key = os.environ['SCRAPER_API_KEY']
-    payload = {
-        'api_key': api_key,
-        'url': url,
-        'country_code': 'ar'
-    }
-    response = requests.get('https://api.scraperapi.com/', params=payload, timeout=120)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    try:
-        title = soup.find('h1', class_='ui-pdp-title').get_text(strip=True)
-    except:
-        title = None
-
-    try:
-        price = soup.find('span', class_='andes-money-amount__fraction').get_text(strip=True)
-    except:
-        price = None
-
-    try:
-        img_tag = soup.find('img', class_='ui-pdp-image')
-        image_url = img_tag.get('src') or img_tag.get('data-src')
-    except:
-        image_url = None
-
-    return title, price, image_url
 
 
 # ─────────────────────────────────────────
@@ -126,13 +59,45 @@ def buscar():
         flash('Por favor ingresá un producto para buscar.')
         return redirect(url_for('index'))
 
-    productos = get_search_results(query)
+    # Verificar si ya hay resultados guardados para esta búsqueda
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(
+        'SELECT * FROM resultados WHERE query = %s ORDER BY fecha_escaneo DESC LIMIT 9',
+        (query,)
+    )
+    productos = c.fetchall()
+    conn.close()
 
-    if not productos:
-        flash('No se encontraron resultados para tu búsqueda.')
+    if productos:
+        # Hay resultados guardados — mostrarlos directamente
+        productos_dict = [{
+            'titulo': p[2],
+            'precio': p[3],
+            'url':    p[4],
+            'imagen': None,
+        } for p in productos]
+        return render_template('resultados.html', productos=productos_dict, query=query, email=email)
+    else:
+        # No hay resultados aún — guardar búsqueda y avisar al usuario
+        if email:
+            conn = get_conn()
+            c = conn.cursor()
+            # Verificar que no esté ya guardada
+            c.execute('SELECT id FROM monitoreados WHERE query = %s AND email = %s', (query, email))
+            existe = c.fetchone()
+            if not existe:
+                c.execute(
+                    'INSERT INTO monitoreados (query, email, precio_minimo, fecha_agregado) VALUES (%s, %s, %s, %s)',
+                    (query, email, 0, datetime.now().strftime("%Y-%m-%d %H:%M"))
+                )
+                conn.commit()
+            conn.close()
+            flash(f'✅ Búsqueda "{query}" guardada. Los resultados estarán disponibles mañana cuando se ejecute el escaneo automático.')
+        else:
+            flash(f'No hay resultados para "{query}" todavía. Ingresá tu email para que te avisemos cuando estén disponibles.')
+
         return redirect(url_for('index'))
-
-    return render_template('resultados.html', productos=productos, query=query, email=email)
 
 
 @app.route('/guardar-busqueda', methods=['POST'])
@@ -147,12 +112,14 @@ def guardar_busqueda():
 
     conn = get_conn()
     c = conn.cursor()
-    c.execute(
-        '''INSERT INTO monitoreados (query, email, precio_minimo, fecha_agregado)
-        VALUES (%s, %s, %s, %s)''',
-        (query, email, float(precio_minimo), datetime.now().strftime("%Y-%m-%d %H:%M"))
-    )
-    conn.commit()
+    c.execute('SELECT id FROM monitoreados WHERE query = %s AND email = %s', (query, email))
+    existe = c.fetchone()
+    if not existe:
+        c.execute(
+            'INSERT INTO monitoreados (query, email, precio_minimo, fecha_agregado) VALUES (%s, %s, %s, %s)',
+            (query, email, float(precio_minimo), datetime.now().strftime("%Y-%m-%d %H:%M"))
+        )
+        conn.commit()
     conn.close()
 
     flash(f'✅ Búsqueda "{query}" guardada. Te avisaremos a {email} cuando el precio baje.')
@@ -173,7 +140,6 @@ def ver_monitoreados():
         conn.close()
 
     return render_template('monitoreados.html', monitoreados=monitoreados, email_filtro=email_filtro)
-
 
 
 @app.route('/eliminar/<int:id>')

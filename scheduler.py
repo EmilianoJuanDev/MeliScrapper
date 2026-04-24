@@ -7,10 +7,6 @@ import requests
 from bs4 import BeautifulSoup
 import os
 
-# ─────────────────────────────────────────
-# CONFIGURACIÓN — vienen de variables de entorno
-# ─────────────────────────────────────────
-
 GMAIL_USUARIO  = os.environ['GMAIL_USUARIO']
 GMAIL_PASSWORD = os.environ['GMAIL_PASSWORD']
 DATABASE_URL   = os.environ['DATABASE_URL']
@@ -25,7 +21,7 @@ def get_conn():
 
 
 # ─────────────────────────────────────────
-# SCRAPING
+# SCRAPING DIRECTO (sin proxy)
 # ─────────────────────────────────────────
 
 def clean_price(price_str):
@@ -37,11 +33,11 @@ def clean_price(price_str):
 
 def get_search_results(query):
     headers = {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept-Language': 'es-ES,es;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'es-AR,es;q=0.9',
     }
     url = f"https://listado.mercadolibre.com.ar/{query}"
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
     soup = BeautifulSoup(response.text, 'html.parser')
 
     product_links = []
@@ -53,10 +49,10 @@ def get_search_results(query):
 
 def get_product_info(url):
     headers = {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept-Language': 'es-ES,es;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'es-AR,es;q=0.9',
     }
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
     soup = BeautifulSoup(response.text, 'html.parser')
 
     try:
@@ -168,15 +164,22 @@ def escanear():
         email         = registro[2]
         precio_minimo = registro[3]
 
-        print(f"\n🔍 Buscando: '{query}' (mínimo guardado: ${precio_minimo:,.0f})")
+        print(f"\n🔍 Buscando: '{query}'")
 
         urls = get_search_results(query)
         if not urls:
             print("  Sin resultados.")
             continue
 
+        # Borrar resultados anteriores de esta búsqueda
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute('DELETE FROM resultados WHERE query = %s', (query,))
+        conn.commit()
+        conn.close()
+
         productos_bajaron = []
-        nuevo_minimo      = precio_minimo
+        nuevo_minimo      = precio_minimo if precio_minimo > 0 else None
 
         for url in urls[:9]:
             title, price = get_product_info(url)
@@ -187,17 +190,30 @@ def escanear():
             if not precio_actual:
                 continue
 
-            if precio_actual < precio_minimo:
-                print(f"  📉 Bajó: {title[:50]} → ${precio_actual:,.0f}")
+            # Guardar resultado en Supabase
+            conn = get_conn()
+            c = conn.cursor()
+            c.execute(
+                'INSERT INTO resultados (query, titulo, precio, url, fecha_escaneo) VALUES (%s, %s, %s, %s, %s)',
+                (query, title, precio_actual, url, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            )
+            conn.commit()
+            conn.close()
+
+            print(f"  ✔ {title[:50]} → ${precio_actual:,.0f}")
+
+            # Comparar precio
+            if precio_minimo > 0 and precio_actual < precio_minimo:
                 productos_bajaron.append({
                     'titulo':          title,
                     'precio_anterior': precio_minimo,
                     'precio_nuevo':    precio_actual,
                     'url':             url,
                 })
-                if precio_actual < nuevo_minimo:
+                if nuevo_minimo is None or precio_actual < nuevo_minimo:
                     nuevo_minimo = precio_actual
 
+        # Mandar mail si hubo bajadas
         if productos_bajaron:
             enviar_mail(email, query, productos_bajaron)
             conn = get_conn()
@@ -209,8 +225,17 @@ def escanear():
             conn.commit()
             conn.close()
             print(f"  💾 Precio mínimo actualizado a ${nuevo_minimo:,.0f}")
-        else:
-            print(f"  ✔ Sin cambios de precio.")
+        elif precio_minimo == 0 and nuevo_minimo:
+            # Primera vez — guardar el precio mínimo encontrado
+            conn = get_conn()
+            c = conn.cursor()
+            c.execute(
+                'UPDATE monitoreados SET precio_minimo = %s WHERE id = %s',
+                (nuevo_minimo, id_registro)
+            )
+            conn.commit()
+            conn.close()
+            print(f"  💾 Precio mínimo inicial guardado: ${nuevo_minimo:,.0f}")
 
     print(f"\nEscaneo finalizado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
